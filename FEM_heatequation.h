@@ -43,7 +43,7 @@
 using namespace dealii;
 
 #define r(i) sqrt(pow(nodeLocation[i][0],2)+pow(nodeLocation[i][1],2)+pow(nodeLocation[i][2],2))
-const unsigned int manifold = 2;
+const unsigned int manifold = 0;
 const unsigned int global_refinement = 3;
 
 std::vector<double> log_space(double start, double stop, unsigned int number_of_points){   // log space function
@@ -107,18 +107,22 @@ struct grid_transform                                         // grid deform fun
     Point<3> operator() (const Point<3> &in) const
     {
         double temp_r = sqrt(pow(in(0),2)+pow(in(1),2)+pow(in(2),2));
+        double dr_lin = (outer_radius - inner_radius)/number_of_cells;
+        double drho_log = (-(log10(rho_deform_grid(outer_radius)) - log10(rho_deform_grid(inner_radius))))/number_of_cells;
+        double n = std::floor((temp_r-inner_radius)/dr_lin + 0.5);
+        double r_new = r_deform_grid(pow(10,log10(rho_deform_grid(inner_radius))-n*drho_log));
 
-        double theta = acos(in(2)/(temp_r));
-        double phi = atan(in(1)/(in(0)));
-
-        double dr_lin = (outer_radius - inner_radius)/pow(2,global_refinement);
-        double dr_log = (log10(outer_radius) - log10(inner_radius))/pow(2,global_refinement);
-
-        double n = (temp_r-inner_radius)/dr_lin;
-
-        double r_new = pow(10,log10(inner_radius)+n*dr_log);
-
-        return Point<3> (r_new*sin(theta)*cos(phi), r_new*sin(theta)*sin(phi),r_new*cos(theta));
+        double r_ratio = r_new/temp_r;
+        
+        if (temp_r==inner_radius){
+            return Point<3> (in(0), in(1),in(2));
+        }
+        else if (temp_r==outer_radius){
+            return Point<3> (in(0), in(1),in(2));
+        }
+        else{
+            return Point<3> (in(0)*r_ratio, in(1)*r_ratio,in(2)*r_ratio);
+        }
     }
 };
 

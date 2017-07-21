@@ -1,1 +1,3 @@
-/home/maryhallow/.linuxbrew/Cellar/dealii/HEAD/examples/chaykinea-3d-heat-transfer-code-ca5dda947a6c/CMakeFiles/main.dir
+/home/maryhallow/3d-heat-transfer-code/CMakeFiles/rebuild_cache.dir
+/home/maryhallow/3d-heat-transfer-code/CMakeFiles/edit_cache.dir
+/home/maryhallow/3d-heat-transfer-code/CMakeFiles/main.dir

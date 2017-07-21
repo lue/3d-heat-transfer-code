@@ -20,11 +20,12 @@ const double T_min        = 2.e5;
 const double inner_radius = 5000;                   // lower boundary of the star in cm [for BSK21_1.40 NS model]
 const double outer_radius = 1251100;                // upper boundary of the star in cm [for BSK21_1.40 NS model]
 
-const int number_of_cells   = 50;                  // number of cell star will be divided into along r axis
-const unsigned int N_output = 1000;                  // number of data points in output file containing cooling curves
+const int number_of_cells   = 8;                   // number of cell star will be divided into along r axis
+const unsigned int N_output = 500;                  // number of data points in output file containing cooling curves
 
 // time step handler
-std::vector<double> time_steps =  {1,   10,     100,   1.e3, 1.e4, 1.e5, 1.e6, 1.e7, 1.e8, 1.e9,  1.e10, 1.e10, 1.e10}; // array of time steps [sec]
+//std::vector<double> time_steps =  {1,   10,     100,   1.e3, 1.e4, 1.e5, 1.e6, 1.e7, 1.e8, 1.e9,  1.e10, 1.e10, 1.e10}; // array of time steps [sec]
+std::vector<double> time_steps =  {5,   50,     500,   5.e3, 5.e4, 5.e5, 5.e6, 5.e7, 5.e8, 5.e9,  5.e10, 5.e11, 5.e11}; // array of time steps [sec]
 std::vector<double> time_points = {1.e-7, 1.e-6, 1e-4, 1.e-3, 1.e-2, 1.e-1, 1.e0, 1.e1, 3.e2, 1.e3, 2.e3, 1.e5, 1.e6};    // time values when we change time step according to the array above [yr]
 // initial time step (at t=0.0 sec) is set to be 0.1 sec
                                                                                                           

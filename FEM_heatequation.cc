@@ -183,8 +183,12 @@ void FEM<dim>::assemble_system(){
 
         for (unsigned int f=0; f < faces_per_elem; f++){                      // This loop stands for Neumann condition at the boundary of the star
             fe_face_values.reinit (elem, f);
-            if(elem->face(f)->center()[0]>=outer_radius){                     // We check whether we are at the boundary or not. If we are not, nothing happens.
-
+            if(elem->face(f)->center()[0]*elem->face(f)->center()[1]*elem->face(f)->center()[2]>0 &&  
+               sqrt(pow(elem->face(f)->center()[0],2)+pow(elem->face(f)->center()[1],2)+pow(elem->face(f)->center()[2],2)) > inner_radius &&
+               elem->face(f)->at_boundary()){ // We check whether we are at the boundary or not. If we are not, nothing happens.
+                //std::cout << "condition works" << std::endl;
+                //std::cout << sqrt(pow(elem->face(f)->center()[0],2)+pow(elem->face(f)->center()[1],2)+pow(elem->face(f)->center()[2],2)) << std::endl;
+                //std::cout << outer_radius << std::endl;
                 for (unsigned int q=0; q<num_face_quad_pts; ++q){
                     double T_face = 0.;                                       // We interpolate temperature at quadrature point q (we know temperature at face nodes).
                     for(unsigned int C=0; C<dofs_per_elem; C++){              // T at q = sum over C where C goes over all face nodes (C = 1 ... 6 ). In the sum we have dealii basis function "shape_value"
@@ -274,7 +278,7 @@ void FEM<dim>::solve_trans(){                                                 //
             std::cout << "number of step = " << snap_shot_counter << " out of " << N_output << std::endl;
                                                                               // writing out cooling data to the dat file
             for(unsigned int globalNode=0; globalNode<totalNodes; globalNode++) {
-                if (nodeLocation[globalNode][0] >= outer_radius) {
+                if (sqrt(pow(nodeLocation[globalNode][0],2)+pow(nodeLocation[globalNode][1],2)+pow(nodeLocation[globalNode][2],2)) == outer_radius) {
                     FILE* curve = std::fopen(CoolingFile, "a+" );
                                                                               // writing out (time in years, (internal) redshifted temperature on the surface in K, (external) redshifted temperature on the surface in K)
                     std::fprintf(curve, "%14.7e %14.7e  %14.7e\n", t_step/yrtosec, D_trans[globalNode]*exp(-phi(outer_radius)), TiTe(D_trans[globalNode]*exp(-phi(outer_radius)))*redshift);
