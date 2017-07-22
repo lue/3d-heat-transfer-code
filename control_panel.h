@@ -20,8 +20,9 @@ const double T_min        = 2.e5;
 const double inner_radius = 5000;                   // lower boundary of the star in cm [for BSK21_1.40 NS model]
 const double outer_radius = 1251100;                // upper boundary of the star in cm [for BSK21_1.40 NS model]
 
-const int number_of_cells   = 8;                   // number of cell star will be divided into along r axis
-const unsigned int N_output = 500;                  // number of data points in output file containing cooling curves
+const unsigned int global_refinement = 3;           // refinement parameter
+const unsigned int number_of_cells   = pow(2,global_refinement); // number of cells in the mesh
+const unsigned int N_output = 200;                  // number of data points in output file containing cooling curves
 
 // time step handler
 //std::vector<double> time_steps =  {1,   10,     100,   1.e3, 1.e4, 1.e5, 1.e6, 1.e7, 1.e8, 1.e9,  1.e10, 1.e10, 1.e10}; // array of time steps [sec]

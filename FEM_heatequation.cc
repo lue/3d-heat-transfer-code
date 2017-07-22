@@ -25,43 +25,20 @@ FEM<dim>::~FEM (){dof_handler.clear ();}
 
 //Define the problem domain and generate the mesh
 template <int dim>
-void FEM<dim>::generate_mesh(){
+void FEM<dim>::generate_mesh(){ // setting up the mesh
 
-    if(manifold==0){                                                          // when 0 we are solving the equation on quater hyper shell manifold
+    double  x_center = 0.,
+            y_center = 0.,
+            z_center = 0.;
 
-        double  x_center = 0.,
-                y_center = 0.,
-                z_center = 0.;
-
-        Point<dim,double> center(x_center,y_center,z_center);
-        GridGenerator::quarter_hyper_shell (triangulation, center, inner_radius, outer_radius, 0, true);
-        static const SphericalManifold<3> manifold_description(center);
-        triangulation.set_all_manifold_ids(0);
-        triangulation.set_manifold (0, manifold_description);
-        triangulation.refine_global(global_refinement);
-        GridTools::transform(grid_transform(), triangulation);                // we deform the quater hypershell manifold
-    }
-    else{                                                                     // if manifold does not equal to zero then we are solving the problem on hyperrectangle manifold
-                                                                              // (currently used)
-        std::vector<unsigned int> num_of_elems(dim);
-        num_of_elems[0] = number_of_cells;
-        num_of_elems[1] = 1;
-        num_of_elems[2] = 1;
-
-        double x_min = inner_radius,
-                x_max = outer_radius,
-                y_min = -1.e4,
-                y_max = 1.e4,
-                z_min = -1.e4,
-                z_max = 1.e4;
-
-        Point<dim,double> min(x_min,y_min,z_min),
-                max(x_max,y_max,z_max);
-        GridGenerator::subdivided_hyper_rectangle (triangulation, num_of_elems, min, max);
-        GridTools::transform(grid_transform_2(), triangulation);              // We deform our hyperrectangle manifold in order to get density-logarithmic mesh
-                                                                              // Here we also squeeze our hyperrectangle along y and z axis proportionally to the x values
-
-    }
+    Point<dim,double> center(x_center,y_center,z_center);
+    GridGenerator::quarter_hyper_shell (triangulation, center, inner_radius, outer_radius, 0, true);
+    static const SphericalManifold<3> manifold_description(center);
+    triangulation.set_all_manifold_ids(0);
+    triangulation.set_manifold (0, manifold_description);
+    triangulation.refine_global(global_refinement);
+    GridTools::transform(grid_transform(), triangulation);                // we deform the quater hypershell manifold
+   
 }
 
 // Setup data structures (sparse matrix, vectors)
@@ -150,10 +127,8 @@ void FEM<dim>::assemble_system(){
             }
 
             double r_q   = sqrt(pow(fe_values.quadrature_point(q)[0],2) + pow(fe_values.quadrature_point(q)[1],2) + pow(fe_values.quadrature_point(q)[2],2));
-                                                                              // in case if we want to have the "correct" star radius r = sqrt(x^2+y^2+z^2).
-                                                                              // Below we have ( and currently use ) r = x, because y and z much less than x and we can negleсt them
-
-            //double r_q = fe_values.quadrature_point(q)[0];                  // We get the quadrature point value. [0] means that we get the x-coordinate of vector r at point q
+                                                                             
+                                                                              // We get r values at quadrature points
             double rho_q = rho(r_q);                                          // We get density that corresponds to r at quadrature point q
 
             double phi_q = phi(r_q);                                          // Same with gravitational potential
@@ -186,9 +161,7 @@ void FEM<dim>::assemble_system(){
             if(elem->face(f)->center()[0]*elem->face(f)->center()[1]*elem->face(f)->center()[2]>0 &&  
                sqrt(pow(elem->face(f)->center()[0],2)+pow(elem->face(f)->center()[1],2)+pow(elem->face(f)->center()[2],2)) > inner_radius &&
                elem->face(f)->at_boundary()){ // We check whether we are at the boundary or not. If we are not, nothing happens.
-                //std::cout << "condition works" << std::endl;
-                //std::cout << sqrt(pow(elem->face(f)->center()[0],2)+pow(elem->face(f)->center()[1],2)+pow(elem->face(f)->center()[2],2)) << std::endl;
-                //std::cout << outer_radius << std::endl;
+
                 for (unsigned int q=0; q<num_face_quad_pts; ++q){
                     double T_face = 0.;                                       // We interpolate temperature at quadrature point q (we know temperature at face nodes).
                     for(unsigned int C=0; C<dofs_per_elem; C++){              // T at q = sum over C where C goes over all face nodes (C = 1 ... 6 ). In the sum we have dealii basis function "shape_value"
@@ -237,7 +210,9 @@ void FEM<dim>::solve_trans(){                                                 //
 
     unsigned int time_counter = 0;                                            // Just some parameters that help to handle the computation and output processes
     unsigned int snap_shot_counter = 0;
-    FILE* curve = std::fopen("cooling_curve.dat", "w" );                      // output file for cooling curve. Here we clear it
+
+    FILE* curve = std::fopen(CoolingFile, "w" );                                                                      
+    std::fprintf(curve, "%s \n", "time [yr], Temperature at the boundary [K], Redshifted temperature at the surface [K]");
     std::fclose(curve);
 
 
@@ -277,6 +252,7 @@ void FEM<dim>::solve_trans(){                                                 //
             std::cout << "time step = " << delta_t << " sec" << std::endl;
             std::cout << "number of step = " << snap_shot_counter << " out of " << N_output << std::endl;
                                                                               // writing out cooling data to the dat file
+
             for(unsigned int globalNode=0; globalNode<totalNodes; globalNode++) {
                 if (sqrt(pow(nodeLocation[globalNode][0],2)+pow(nodeLocation[globalNode][1],2)+pow(nodeLocation[globalNode][2],2)) == outer_radius) {
                     FILE* curve = std::fopen(CoolingFile, "a+" );

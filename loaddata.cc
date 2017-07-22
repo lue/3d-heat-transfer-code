@@ -85,7 +85,7 @@ gsl_interp_accel *yacc = gsl_interp_accel_alloc();
 
 void loadfiles(void)
 {
-    int i, j;
+    int i;
 
     std::ifstream inputFile1("./datafiles/file1.dat");
     if (inputFile1.is_open()) {

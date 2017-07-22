@@ -43,8 +43,6 @@
 using namespace dealii;
 
 #define r(i) sqrt(pow(nodeLocation[i][0],2)+pow(nodeLocation[i][1],2)+pow(nodeLocation[i][2],2))
-const unsigned int manifold = 0;
-const unsigned int global_refinement = 3;
 
 std::vector<double> log_space(double start, double stop, unsigned int number_of_points){   // log space function
 
@@ -123,25 +121,6 @@ struct grid_transform                                         // grid deform fun
         else{
             return Point<3> (in(0)*r_ratio, in(1)*r_ratio,in(2)*r_ratio);
         }
-    }
-};
-
-struct grid_transform_2                                       // grid deform function (hyperrectangle which is shrinked along x-axis. This is equivalent to 1D case, currently used)
-{
-    Point<3> operator() (const Point<3> &in) const
-    {
-        double temp_r = in(0);
-
-        double dr_lin = (outer_radius - inner_radius)/number_of_cells;
-        double drho_log = (-(log10(rho_deform_grid(outer_radius)) - log10(rho_deform_grid(inner_radius))))/number_of_cells;
-        double n = std::floor((temp_r-inner_radius)/dr_lin + 0.5);
-        double x_new = r_deform_grid(pow(10,log10(rho_deform_grid(inner_radius))-n*drho_log));
-
-        double y_new = in(1)/outer_radius*x_new;
-        double z_new = in(2)/outer_radius*x_new;
-
-        return Point<3> (x_new, y_new, z_new);
-
     }
 };
 
