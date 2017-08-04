@@ -33,6 +33,7 @@ using namespace dealii::LinearAlgebraTrilinos;
 #include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/fe/fe_values.h>
+#include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/numerics/data_out.h>
@@ -73,9 +74,9 @@ using namespace dealii::LinearAlgebraTrilinos;
     MPI_Comm                                  mpi_communicator;
 
     parallel::distributed::Triangulation<dim> triangulation;
-
+ 
+    FESystem<dim>      fe;
     DoFHandler<dim>                           dof_handler;
-    FE_Q<dim>                                 fe;
 
     QGauss<dim>   quadrature_formula;                         // Quadrature
     QGauss<dim-1> face_quadrature_formula;                    // Face Quadrature
@@ -179,8 +180,8 @@ void LaplaceProblem<dim>::apply_initial_conditions(){
     :
     mpi_communicator (MPI_COMM_WORLD),
     triangulation (mpi_communicator),
+    fe (FE_Q<dim>(order), 1),
     dof_handler (triangulation),
-    fe (2),
     quadrature_formula(quadRule),
     face_quadrature_formula(quadRule),
     pcout (std::cout,
@@ -220,11 +221,6 @@ void LaplaceProblem<dim>::apply_initial_conditions(){
 
     constraints.clear ();
     constraints.reinit (locally_relevant_dofs);
-    DoFTools::make_hanging_node_constraints (dof_handler, constraints);
-    VectorTools::interpolate_boundary_values (dof_handler,
-                                              0,
-                                              ZeroFunction<dim>(),
-                                              constraints);
     constraints.close ();
 
   
@@ -256,8 +252,6 @@ void LaplaceProblem<dim>::apply_initial_conditions(){
 
 template <int dim>
 void LaplaceProblem<dim>::assemble_system(){
-    
-    M=0; K=0; F=0;
 
     FEValues<dim> fe_values(fe,                                               // we update fe values parameters
                             quadrature_formula,
@@ -299,7 +293,7 @@ void LaplaceProblem<dim>::assemble_system(){
             double D_trans_at_q = 0.;                                         // We interpolate temperature at quadrature point q using dealii basis functions
 
             for(unsigned int C=0; C<dofs_per_elem; C++){
-                D_trans_at_q += D_trans[local_dof_indices[C]]*fe_values.shape_value(C,q);
+                D_trans_at_q += D_trans(local_dof_indices[C])*fe_values.shape_value(C,q);
             }
 
             double r_q   = sqrt(pow(fe_values.quadrature_point(q)[0],2) + pow(fe_values.quadrature_point(q)[1],2) + pow(fe_values.quadrature_point(q)[2],2));
@@ -376,10 +370,8 @@ void LaplaceProblem<dim>::assemble_system(){
   { 
     TimerOutput::Scope t(computing_timer, "solve");
 
-    double delta_t = 0.1;                                                     // initial time step
+    double delta_t = 1;                                                     // initial time step
     double t_step = 0;                                                        // initial time
-
-                                                  // applying initial conditions at t_step = 0
 
     unsigned int time_counter = 0;                                            // Just some parameters that help to handle the computation and output processes
     unsigned int snap_shot_counter = 0;
@@ -398,19 +390,11 @@ void LaplaceProblem<dim>::assemble_system(){
 
     LA::MPI::Vector completely_distributed_solution (locally_owned_dofs, mpi_communicator);
 
-    SolverControl solver_control (600, 1e-3);
+    SolverControl solver_control (150, 1e-3);
 
-    LA::SolverCG solver(solver_control);
+    dealii::TrilinosWrappers::SolverDirect solver(solver_control);
 
-    LA::MPI::PreconditionSSOR preconditioner;
-    preconditioner.initialize(system_matrix, 1.2);
-    
-   
-    solver.solve (system_matrix, completely_distributed_solution, RHS,
-                  preconditioner);
-
-    pcout << "   Solved in " << solver_control.last_step()
-          << " iterations." << std::endl;
+    solver.solve (system_matrix, completely_distributed_solution, RHS);
 
     constraints.distribute (completely_distributed_solution);
 

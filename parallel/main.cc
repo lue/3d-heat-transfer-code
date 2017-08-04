@@ -40,6 +40,7 @@ int main (int argc, char *argv[]){
                 std::cout << "system has been assembled" << std::endl;
                 problemObject.solve ();
                 std::cout << "system has been solved" << std::endl;
+                problemObject.output_results(0);
 	
 
 
