@@ -8,13 +8,12 @@ It uses the deal.II FEM library, dealii.org*/
 #include <fstream>
 #include <unistd.h>
 #include <time.h>
-#include "FEM_parallel.cc"
-
+#include "FEM_heatequation.cc"
 
 using namespace dealii;
 void TimeOut(time_t StartTime);
 
-int main (int argc, char *argv[]){
+int main (){
 
 	time_t StartTime;
 	StartTime=time(NULL);
@@ -24,23 +23,11 @@ int main (int argc, char *argv[]){
 
         loadfiles();
 
-                using namespace dealii;
 
-                Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
-
-                LaplaceProblem<dimension> problemObject(Euler_scheme);
-                std::cout << "deal ii obj has been created" << std::endl;
+		FEM<dimension> problemObject(Euler_scheme);
 		problemObject.generate_mesh();
-                std::cout << "mesh has been created" << std::endl;
 		problemObject.setup_system();
-                std::cout << "system has been set up" << std::endl;
-                problemObject.apply_initial_conditions(); 
-                std::cout << "Initial conditions have been applied" << std::endl;
-		problemObject.assemble_system ();
-                std::cout << "system has been assembled" << std::endl;
-                problemObject.solve ();
-                std::cout << "system has been solved" << std::endl;
-                problemObject.output_results(0);
+		problemObject.solve_trans();
 	
 
 

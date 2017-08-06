@@ -16,25 +16,29 @@ using namespace dealii::LinearAlgebraTrilinos;
 
 #include <deal.II/lac/vector.h>
 #include <deal.II/lac/full_matrix.h>
-#include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/constraint_matrix.h>
 #include <deal.II/lac/dynamic_sparsity_pattern.h>
+#include <deal.II/lac/sparsity_tools.h>
 
 #include <deal.II/lac/petsc_parallel_sparse_matrix.h>
 #include <deal.II/lac/petsc_parallel_vector.h>
 #include <deal.II/lac/petsc_solver.h>
-#include <deal.II/lac/petsc_precondition.h>
 
 #include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/grid_tools.h>
+
 #include <deal.II/grid/tria_accessor.h>
 #include <deal.II/grid/tria_iterator.h>
-#include <deal.II/grid/grid_tools.h>
+#include <deal.II/grid/manifold_lib.h>
+
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_tools.h>
+
 #include <deal.II/fe/fe_values.h>
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_q.h>
+
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/error_estimator.h>
@@ -42,25 +46,19 @@ using namespace dealii::LinearAlgebraTrilinos;
 #include <deal.II/base/utilities.h>
 #include <deal.II/base/conditional_ostream.h>
 #include <deal.II/base/index_set.h>
-#include <deal.II/lac/sparsity_tools.h>
+
 #include <deal.II/distributed/tria.h>
 #include <deal.II/distributed/grid_refinement.h>
 
 #include <fstream>
 #include <iostream>
 
-#include <deal.II/grid/manifold_lib.h>
+using namespace dealii;
 
-
-#define r(i) sqrt(pow(nodeLocation[i][0],2)+pow(nodeLocation[i][1],2)+pow(nodeLocation[i][2],2))
-
-
-  using namespace dealii;
-
-  template <int dim>
-  class LaplaceProblem
-  {
-  public:
+template <int dim>
+class LaplaceProblem
+{
+    public:
     LaplaceProblem (double Alpha);
     ~LaplaceProblem ();
     
@@ -75,11 +73,11 @@ using namespace dealii::LinearAlgebraTrilinos;
 
     parallel::distributed::Triangulation<dim> triangulation;
  
-    FESystem<dim>      fe;
+    FESystem<dim>                             fe;
     DoFHandler<dim>                           dof_handler;
 
-    QGauss<dim>   quadrature_formula;                         // Quadrature
-    QGauss<dim-1> face_quadrature_formula;                    // Face Quadrature
+    QGauss<dim>   quadrature_formula;                       
+    QGauss<dim-1> face_quadrature_formula;                
 
     IndexSet                                  locally_owned_dofs;
     IndexSet                                  locally_relevant_dofs;
@@ -92,12 +90,15 @@ using namespace dealii::LinearAlgebraTrilinos;
     std::map<unsigned int,double> boundary_values_of_D;     
     Table<2,double>	nodeLocation;	                    
     double alpha, eff_radius; 	                            
+    
+    double redshift = sqrt(1 - (2*G*mass(outer_radius))/(outer_radius*c*c));
 
     ConditionalOStream                        pcout;
     TimerOutput                               computing_timer;
-  };
+};
 
-  struct grid_transform                                         // grid deform function ( quater hyper shell )
+
+struct grid_transform                                     
 {
     Point<3> operator() (const Point<3> &in) const
     {
@@ -122,7 +123,7 @@ using namespace dealii::LinearAlgebraTrilinos;
 };
 
 
-std::vector<double> log_space(double start, double stop, unsigned int number_of_points){   // log space function
+std::vector<double> log_space(double start, double stop, unsigned int number_of_points){  
 
     std::vector<double> vector(number_of_points);
     double log_start = log10(start);
@@ -138,7 +139,7 @@ std::vector<double> log_space(double start, double stop, unsigned int number_of_
 
 
 template <int dim>
-void LaplaceProblem<dim>::generate_mesh(){ // setting up the mesh
+void LaplaceProblem<dim>::generate_mesh(){ 
 
     double  x_center = 0.,
             y_center = 0.,
@@ -150,18 +151,19 @@ void LaplaceProblem<dim>::generate_mesh(){ // setting up the mesh
     triangulation.set_all_manifold_ids(0);
     triangulation.set_manifold (0, manifold_description);
     triangulation.refine_global(global_refinement);
-    GridTools::transform(grid_transform(), triangulation);                // we deform the quater hypershell manifold
-   
+    GridTools::transform(grid_transform(), triangulation);               
 }
 
-// Applying initial conditions
+
 template <int dim>
 void LaplaceProblem<dim>::apply_initial_conditions(){
 
     LA::MPI::Vector completely_distributed_solution (locally_owned_dofs, mpi_communicator);
-    const unsigned int dofs_per_elem = fe.dofs_per_cell;                      // This gives you dofs per element
-    std::vector<unsigned int> local_dof_indices (dofs_per_elem);              // This relates local dof numbering to global dof numbering
+    const unsigned int dofs_per_elem = fe.dofs_per_cell;                     
+    std::vector<unsigned int> local_dof_indices (dofs_per_elem);             
+
     typename DoFHandler<dim>::active_cell_iterator elem = dof_handler.begin_active (), endc = dof_handler.end();
+
     for (;elem!=endc; ++elem){
         if (elem->is_locally_owned()){
             elem->get_dof_indices (local_dof_indices);
@@ -175,8 +177,8 @@ void LaplaceProblem<dim>::apply_initial_conditions(){
     D_trans = completely_distributed_solution;
 }
 
-  template <int dim>
-  LaplaceProblem<dim>::LaplaceProblem (double Alpha)
+template <int dim>
+LaplaceProblem<dim>::LaplaceProblem (double Alpha)
     :
     mpi_communicator (MPI_COMM_WORLD),
     triangulation (mpi_communicator),
@@ -195,16 +197,16 @@ void LaplaceProblem<dim>::apply_initial_conditions(){
 
 
 
-  template <int dim>
-  LaplaceProblem<dim>::~LaplaceProblem ()
-  {
+template <int dim>
+LaplaceProblem<dim>::~LaplaceProblem ()
+{
     dof_handler.clear ();
-  }
+}
 
 
-  template <int dim>
-  void LaplaceProblem<dim>::setup_system ()
-  {
+template <int dim>
+void LaplaceProblem<dim>::setup_system ()
+{
     TimerOutput::Scope t(computing_timer, "setup");
 
     dof_handler.distribute_dofs (fe);
@@ -218,6 +220,9 @@ void LaplaceProblem<dim>::apply_initial_conditions(){
     D_tilde.reinit (locally_owned_dofs, mpi_communicator);
     RHS.reinit (locally_owned_dofs, mpi_communicator);
     F.reinit (locally_owned_dofs, mpi_communicator);
+
+    pcout << "   Number of active elems:       " << triangulation.n_active_cells() << std::endl;
+    pcout << "   Number of degrees of freedom: " << dof_handler.n_dofs() << std::endl;
 
     constraints.clear ();
     constraints.reinit (locally_relevant_dofs);
@@ -246,12 +251,16 @@ void LaplaceProblem<dim>::apply_initial_conditions(){
                           locally_owned_dofs,
                           dsp,
                           mpi_communicator);
-  }
+}
 
 
 
 template <int dim>
 void LaplaceProblem<dim>::assemble_system(){
+
+    TimerOutput::Scope t(computing_timer, "Assembly");
+
+    M=0; K=0; F=0;
 
     FEValues<dim> fe_values(fe,                                               // we update fe values parameters
                             quadrature_formula,
@@ -270,7 +279,7 @@ void LaplaceProblem<dim>::assemble_system(){
     const unsigned int faces_per_elem = GeometryInfo<dim>::faces_per_cell;    // Faces per cell (for our geometry it is 6)
 
     const unsigned int dofs_per_elem = fe.dofs_per_cell;                      // This gives you dofs per element
-    unsigned int 	   num_quad_pts = quadrature_formula.size();              // Total number of quad points in the element
+    unsigned int       num_quad_pts = quadrature_formula.size();              // Total number of quad points in the element
 
     FullMatrix<double> Mlocal (dofs_per_elem, dofs_per_elem);                 // Mass matrix
     FullMatrix<double> Klocal (dofs_per_elem, dofs_per_elem);                 // Stiffness matrix
@@ -328,20 +337,19 @@ void LaplaceProblem<dim>::assemble_system(){
 
         for (unsigned int f=0; f < faces_per_elem; f++){                      // This loop stands for Neumann condition at the boundary of the star
             fe_face_values.reinit (elem, f);
-            if(elem->face(f)->center()[0]*elem->face(f)->center()[1]*elem->face(f)->center()[2]>0 &&  
-               sqrt(pow(elem->face(f)->center()[0],2)+pow(elem->face(f)->center()[1],2)+pow(elem->face(f)->center()[2],2)) > inner_radius &&
-               elem->face(f)->at_boundary()){ // We check whether we are at the boundary or not. If we are not, nothing happens.
-
-                for (unsigned int q=0; q<num_face_quad_pts; ++q){
-                    double T_face = 0.;                                       // We interpolate temperature at quadrature point q (we know temperature at face nodes).
-                    for(unsigned int C=0; C<dofs_per_elem; C++){              // T at q = sum over C where C goes over all face nodes (C = 1 ... 6 ). In the sum we have dealii basis function "shape_value"
+            if(elem->face(f)->at_boundary()){                                 // We check whether we are at the boundary or not. If we are not, nothing happens.
+                if(elem->face(f)->boundary_id() == 1){
+                    for (unsigned int q=0; q<num_face_quad_pts; ++q){
+                        double T_face = 0.;                                   // We interpolate temperature at quadrature point q (we know temperature at face nodes).
+                        for(unsigned int C=0; C<dofs_per_elem; C++){          // T at q = sum over C where C goes over all face nodes (C = 1 ... 6 ). In the sum we have dealii basis function "shape_value"
                                                                               // corresponding to C node at quadrature point q times T at C node)
-                        T_face += D_trans[local_dof_indices[C]]*fe_face_values.shape_value(C,q);
+                            T_face += D_trans[local_dof_indices[C]]*fe_face_values.shape_value(C,q);
+                        }
+                        for (unsigned int A=0; A<dofs_per_elem; A++){         // Photon radiation from the star surface
+                            Flocal[A] -= sigma*pow(TiTe(T_face*exp(-phi(outer_radius))),4)*exp(2*phi(outer_radius))*fe_face_values.shape_value(A,q)*fe_face_values.JxW(q);
+                        }
                     }
-                    for (unsigned int A=0; A<dofs_per_elem; A++){             // Photon radiation from the star surface
-                        Flocal[A] -= sigma*pow(TiTe(T_face*exp(-phi(outer_radius))),4)*exp(2*phi(outer_radius))*fe_face_values.shape_value(A,q)*fe_face_values.JxW(q);
-                    }
-                }
+                }   
             }
         }
 
@@ -365,51 +373,117 @@ void LaplaceProblem<dim>::assemble_system(){
 }
 
 
-  template <int dim>
-  void LaplaceProblem<dim>::solve ()
+template <int dim>
+void LaplaceProblem<dim>::solve ()
   { 
-    TimerOutput::Scope t(computing_timer, "solve");
 
-    double delta_t = 1;                                                     // initial time step
-    double t_step = 0;                                                        // initial time
+    double delta_t = 1;                                                       // initial time step
+    double t_step = 0;       
+
+    unsigned int trigger = 0;
+    unsigned int N_proc_write = 0;
 
     unsigned int time_counter = 0;                                            // Just some parameters that help to handle the computation and output processes
     unsigned int snap_shot_counter = 0;
-
-    FILE* curve = std::fopen(CoolingFile, "w" );                                                                      
-    std::fprintf(curve, "%s \n", "time [yr], Temperature at the boundary [K], Redshifted temperature at the surface [K]");
-    std::fclose(curve);
-
-    t_step += delta_t;                                                  
-    D_tilde = D_trans;
-    D_tilde.add(delta_t*(1-alpha),V_trans);
-    system_matrix.copy_from(M);
-    system_matrix.add(alpha*delta_t,K);
-    M.vmult(RHS,D_tilde);
-    RHS.add(alpha*delta_t,F);
+    
+    if(Utilities::MPI::this_mpi_process(mpi_communicator) == N_proc_write){
+        FILE* curve = std::fopen(CoolingFile, "w" );                                                                      
+        std::fprintf(curve, "%s \n", "time [yr], Temperature at the boundary [K], Redshifted temperature at the surface [K]");
+        std::fclose(curve);
+    }
 
     LA::MPI::Vector completely_distributed_solution (locally_owned_dofs, mpi_communicator);
+    std::vector<double> snapshot = log_space(2, t_max, N_output);
+    const unsigned int dofs_per_elem = fe.dofs_per_face;                     
+    std::vector<unsigned int> local_dof_indices (dofs_per_elem); 
 
-    SolverControl solver_control (150, 1e-3);
+    SolverControl solver_control (1e-12);
 
     dealii::TrilinosWrappers::SolverDirect solver(solver_control);
 
-    solver.solve (system_matrix, completely_distributed_solution, RHS);
+    apply_initial_conditions(); 
 
-    constraints.distribute (completely_distributed_solution);
+    while(t_step < t_max){
+        
+        assemble_system ();
 
-    D_trans = completely_distributed_solution;
+        t_step += delta_t;     
+        
+        computing_timer.enter_subsection ("Solve"); 
+                                            
+        D_tilde = D_trans;
+        D_tilde.add(delta_t*(1-alpha),V_trans);
+        system_matrix.copy_from(M);
+        system_matrix.add(alpha*delta_t,K);
+        M.vmult(RHS,D_tilde);
+        RHS.add(alpha*delta_t,F);
+        
+        solver.solve (system_matrix, completely_distributed_solution, RHS);
+        
+        constraints.distribute (completely_distributed_solution);
 
-    V_trans = D_trans;                                                    
-    V_trans.add(-1.,D_tilde);
-    V_trans /= alpha*delta_t;
+        D_trans = completely_distributed_solution;
 
-  }
+        V_trans = D_trans;                                                    
+        V_trans.add(-1.,D_tilde);
+        V_trans /= alpha*delta_t;
+
+        computing_timer.leave_subsection();
+
+        if(t_step > snapshot[snap_shot_counter]){ 
+            computing_timer.enter_subsection ("Output"); 
+            output_results(snap_shot_counter);                           
+            snap_shot_counter ++;
+            pcout << "time = " << t_step << " sec" << std::endl;
+            pcout << "time step = " << delta_t << " sec" << std::endl;
+            pcout << "number of step = " << snap_shot_counter << " out of " << N_output << std::endl;
+            
+            typename DoFHandler<dim>::active_cell_iterator elem = dof_handler.begin_active (), endc = dof_handler.end();
+
+            if(Utilities::MPI::this_mpi_process(mpi_communicator) == N_proc_write){
+                for (;elem!=endc; ++elem){
+                    if (elem->is_locally_owned()){
+                        for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; f++){
+                            if(elem->face(f)->at_boundary()){ 
+                                if(elem->face(f)->boundary_id()==1){
+                                    elem->face(f)->get_dof_indices (local_dof_indices);
+                                    FILE* curve = std::fopen(CoolingFile, "a+" );                                           
+                                    std::fprintf(curve, "%14.7e %14.7e  %14.7e\n", t_step/yrtosec, D_trans[local_dof_indices[0]]*exp(-phi(outer_radius)), TiTe(D_trans[local_dof_indices[0]]*
+                                    exp(-phi(outer_radius)))*redshift);
+                                    std::fclose(curve);
+
+                                    std::cout << "T_surface = " << TiTe(D_trans[local_dof_indices[0]]*exp(-phi(outer_radius)))*redshift << " K\n" << std::endl;
+                               
+                                    trigger = 1;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                
+                    if (trigger == 1) {trigger=0; break;}
+                }
+            }
+            computing_timer.leave_subsection(); 
+        }
+
+        if(time_counter<time_points.size()){                                                                                   
+            if(t_step/yrtosec > time_points[time_counter]){
+                delta_t = time_steps[time_counter];
+                time_counter ++;
+            }
+        }
+    }
+
+    pcout << "   Number of active elems:       " << triangulation.n_active_cells() << std::endl;
+    pcout << "   Number of degrees of freedom: " << dof_handler.n_dofs() << std::endl;
+}
 
 
-  template <int dim>
-  void LaplaceProblem<dim>::output_results (const unsigned int cycle) const
-  {
+template <int dim>
+void LaplaceProblem<dim>::output_results (const unsigned int cycle) const
+{
+
     DataOut<dim> data_out;
     data_out.attach_dof_handler (dof_handler);
     data_out.add_data_vector (D_trans, "u");
@@ -421,8 +495,8 @@ void LaplaceProblem<dim>::assemble_system(){
 
     data_out.build_patches ();
 
-    const std::string filename = ("solution-" +
-                                  Utilities::int_to_string (cycle, 2) +
+    const std::string filename = ("output/solution-" +
+                                  Utilities::int_to_string (cycle, 3) +
                                   "." +
                                   Utilities::int_to_string
                                   (triangulation.locally_owned_subdomain(), 4));
@@ -430,23 +504,23 @@ void LaplaceProblem<dim>::assemble_system(){
     data_out.write_vtu (output);
 
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
-      {
+    {
         std::vector<std::string> filenames;
         for (unsigned int i=0;
              i<Utilities::MPI::n_mpi_processes(mpi_communicator);
              ++i)
           filenames.push_back ("solution-" +
-                               Utilities::int_to_string (cycle, 2) +
+                               Utilities::int_to_string (cycle, 3) +
                                "." +
                                Utilities::int_to_string (i, 4) +
                                ".vtu");
 
-        std::ofstream master_output (("solution-" +
-                                      Utilities::int_to_string (cycle, 2) +
+        std::ofstream master_output (("output/solution-" +
+                                      Utilities::int_to_string (cycle, 3) +
                                       ".pvtu").c_str());
         data_out.write_pvtu_record (master_output, filenames);
-      }
-  }
+    }
+}
 
 
 #endif //MAIN_FEM_HEATEQUATION_H
