@@ -68,6 +68,7 @@ class LaplaceProblem
     void assemble_system ();
     void solve ();
     void output_results (const unsigned int cycle) const;
+    void output_dat_file (const unsigned int cycle) const;
 
     MPI_Comm                                  mpi_communicator;
 
@@ -75,6 +76,7 @@ class LaplaceProblem
  
     FESystem<dim>                             fe;
     DoFHandler<dim>                           dof_handler;
+    std::map< types::global_dof_index, Point< dim > > dof_coords;
 
     QGauss<dim>   quadrature_formula;                       
     QGauss<dim-1> face_quadrature_formula;                
@@ -85,11 +87,11 @@ class LaplaceProblem
     ConstraintMatrix                          constraints;
 
     LA::MPI::SparseMatrix                     system_matrix, M, K;
-    LA::MPI::Vector                           RHS, D_trans, V_trans, F, D_tilde;
+    LA::MPI::Vector                           RHS, D_trans, V_trans, F, D_tilde, completely_distributed_solution;
 
     std::map<unsigned int,double> boundary_values_of_D;     
     Table<2,double>	nodeLocation;	                    
-    double alpha, eff_radius; 	                            
+    double alpha, eff_radius;                             
     
     double redshift = sqrt(1 - (2*G*mass(outer_radius))/(outer_radius*c*c));
 
@@ -135,6 +137,17 @@ std::vector<double> log_space(double start, double stop, unsigned int number_of_
     }
 
     return vector;
+}
+
+std::vector<double> from_cart_to_sph(dealii::Point<3, double> input_coord){  
+
+    std::vector<double> output(3);
+   
+    output[0] = std::sqrt(input_coord*input_coord); // r
+    output[1] = std::acos(input_coord[2]/output[0]);  // theta
+    output[2] = std::atan(input_coord[1]/input_coord[0]); // phi
+
+    return output;
 }
 
 
@@ -215,14 +228,19 @@ void LaplaceProblem<dim>::setup_system ()
     DoFTools::extract_locally_relevant_dofs (dof_handler,
                                              locally_relevant_dofs);
 
+    MappingQ1<dim,dim> mapping;
+    DoFTools::map_dofs_to_support_points<dim,dim>(mapping,dof_handler,dof_coords);
+
     D_trans.reinit (locally_owned_dofs,locally_relevant_dofs, mpi_communicator) ;
     V_trans.reinit (locally_owned_dofs, mpi_communicator);
     D_tilde.reinit (locally_owned_dofs, mpi_communicator);
     RHS.reinit (locally_owned_dofs, mpi_communicator);
     F.reinit (locally_owned_dofs, mpi_communicator);
+    completely_distributed_solution.reinit (locally_owned_dofs, mpi_communicator);
 
     pcout << "   Number of active elems:       " << triangulation.n_active_cells() << std::endl;
     pcout << "   Number of degrees of freedom: " << dof_handler.n_dofs() << std::endl;
+    std::cout << "   Number of local degrees of freedom: " << dof_handler.n_locally_owned_dofs() << std::endl;
 
     constraints.clear ();
     constraints.reinit (locally_relevant_dofs);
@@ -305,21 +323,27 @@ void LaplaceProblem<dim>::assemble_system(){
                 D_trans_at_q += D_trans(local_dof_indices[C])*fe_values.shape_value(C,q);
             }
 
-            double r_q   = sqrt(pow(fe_values.quadrature_point(q)[0],2) + pow(fe_values.quadrature_point(q)[1],2) + pow(fe_values.quadrature_point(q)[2],2));
-                                                                             
-                                                                              // We get r values at quadrature points
-            double rho_q = rho(r_q);                                          // We get density that corresponds to r at quadrature point q
+            std::vector<double> r_q = from_cart_to_sph(fe_values.quadrature_point(q));    
+                                                                                 // We get r values at quadrature points
+            double rho_q = rho(r_q[0]);                                          // We get density that corresponds to r at quadrature point q
 
-            double phi_q = phi(r_q);                                          // Same with gravitational potential
-            double m_q   = mass(r_q);                                         // Same with mass that is enclosed within a sphere with radius r_q
-            double sqrt_q = sqrt(1 - (2*G*m_q)/(r_q*c*c));
+            double phi_q = phi(r_q[0]);                                          // Same with gravitational potential
+            double m_q   = mass(r_q[0]);                                         // Same with mass that is enclosed within a sphere with radius r_q
+            double sqrt_q = sqrt(1 - (2*G*m_q)/(r_q[0]*c*c));
             double exp_q = exp(phi_q);                                        // We use this factor when we, for example, relate the local temperature to the redshifted temperature
 
             double kappa_precalc = kappa(D_trans_at_q,rho_q);                 // Precalculating kappa outside of the loops
             double C_precalc = C(D_trans_at_q,rho_q);                         // Precalculating C outside of the loops
+            double Q_precalc = Q(D_trans_at_q,rho_q);    
 
             for(unsigned int A=0; A<fe.dofs_per_cell; A++){                   // Loop over local DOFs to populate Mlocal, Klocal and Flocal at quadrature point q
-                Flocal[A] -= fe_values.shape_value(A,q)*Q(D_trans_at_q,rho_q)/sqrt_q*fe_values.JxW(q);
+                
+                if (r_q[1] >= 0.0 && r_q[1] <= pi/2 && r_q[2] >= 0.0 && r_q[2] <= pi/2 && rho_q >= 1e11 && rho_q <= 3e12){
+                    Flocal[A] -= fe_values.shape_value(A,q)*(Q_precalc-H)/sqrt_q*fe_values.JxW(q);
+                }
+                else{
+                    Flocal[A] -= fe_values.shape_value(A,q)*Q_precalc/sqrt_q*fe_values.JxW(q);
+                }
                 for(unsigned int B=0; B<fe.dofs_per_cell; B++){
                     Mlocal[A][B] += fe_values.shape_value(A,q)*fe_values.shape_value(B,q)*C_precalc/sqrt_q*fe_values.JxW(q);
                     for(unsigned int i=0; i<dim; i++){                        // Kappa is a tensor so we have to create additional loop over its own elements
@@ -377,8 +401,8 @@ template <int dim>
 void LaplaceProblem<dim>::solve ()
   { 
 
-    double delta_t = 1;                                                       // initial time step
-    double t_step = 0;       
+    double delta_t = 10;                                                      // initial time step
+    double t_step = t_min;       
 
     unsigned int trigger = 0;
     unsigned int N_proc_write = 0;
@@ -392,8 +416,7 @@ void LaplaceProblem<dim>::solve ()
         std::fclose(curve);
     }
 
-    LA::MPI::Vector completely_distributed_solution (locally_owned_dofs, mpi_communicator);
-    std::vector<double> snapshot = log_space(2, t_max, N_output);
+    std::vector<double> snapshot = log_space(t_min+2, t_max, N_output);
     const unsigned int dofs_per_elem = fe.dofs_per_face;                     
     std::vector<unsigned int> local_dof_indices (dofs_per_elem); 
 
@@ -432,7 +455,8 @@ void LaplaceProblem<dim>::solve ()
 
         if(t_step > snapshot[snap_shot_counter]){ 
             computing_timer.enter_subsection ("Output"); 
-            output_results(snap_shot_counter);                           
+            output_results(snap_shot_counter); 
+            output_dat_file(snap_shot_counter);                    
             snap_shot_counter ++;
             pcout << "time = " << t_step << " sec" << std::endl;
             pcout << "time step = " << delta_t << " sec" << std::endl;
@@ -522,7 +546,28 @@ void LaplaceProblem<dim>::output_results (const unsigned int cycle) const
     }
 }
 
+template <int dim>
+void LaplaceProblem<dim>::output_dat_file(const unsigned int cycle) const
+{
 
+    const std::string filename = ("output/solution-" +
+                                  Utilities::int_to_string (cycle, 3) +
+                                  "." +
+                                  Utilities::int_to_string
+                                  (triangulation.locally_owned_subdomain(), 4) + ".dat");
+
+    FILE* temperature_profile;
+    temperature_profile = std::fopen(filename.c_str(), "w" );
+    
+    for (unsigned int i=0; i<locally_relevant_dofs.n_elements(); i++){
+
+        std::fprintf(temperature_profile, "%14.5e  %14.5e  %14.5e %14.5e\n", dof_coords.find(locally_relevant_dofs.nth_index_in_set(i))->second[0],
+                                                                             dof_coords.find(locally_relevant_dofs.nth_index_in_set(i))->second[1],
+                                                                             dof_coords.find(locally_relevant_dofs.nth_index_in_set(i))->second[2],
+                                                                             D_trans[locally_relevant_dofs.nth_index_in_set(i)]);
+    }
+    std::fclose(temperature_profile);
+}
 #endif //MAIN_FEM_HEATEQUATION_H
 
 
