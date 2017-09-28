@@ -420,14 +420,18 @@ void LaplaceProblem<dim>::solve ()
     const unsigned int dofs_per_elem = fe.dofs_per_face;                     
     std::vector<unsigned int> local_dof_indices (dofs_per_elem); 
 
-    SolverControl solver_control (1e-12);
+    //SolverControl solver_control (1e3);
 
-    dealii::TrilinosWrappers::SolverDirect solver(solver_control);
+    //dealii::TrilinosWrappers::SolverCG<dim> solver();//solver_control, data);
+
+    // dealii::TrilinosWrappers::SolverDirect solver(solver_control);
+    //dealii::TrilinosWrappers::SolverTFQMR solver();//(solver_control);
 
     apply_initial_conditions(); 
 
     while(t_step < t_max){
-        
+        pcout << "time = " << t_step << " sec" << std::endl;
+ 
         assemble_system ();
 
         t_step += delta_t;     
@@ -441,7 +445,14 @@ void LaplaceProblem<dim>::solve ()
         M.vmult(RHS,D_tilde);
         RHS.add(alpha*delta_t,F);
         
-        solver.solve (system_matrix, completely_distributed_solution, RHS);
+        SolverControl solver_control(1000, 1e-8 * RHS.l2_norm());
+        dealii::TrilinosWrappers::SolverCG cg(solver_control);
+        dealii::TrilinosWrappers::PreconditionSSOR preconditioner;
+        preconditioner.initialize(system_matrix, 1.0);
+        cg.solve(system_matrix, completely_distributed_solution, RHS,
+           preconditioner);
+       
+        // solver.solve (system_matrix, completely_distributed_solution, RHS);
         
         constraints.distribute (completely_distributed_solution);
 
